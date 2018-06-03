@@ -10,7 +10,9 @@ import time
 import os
 from firebase import firebase
 import datetime
-
+import string
+import random
+import glob, os
 #result = fb.patch(my_url + '/orders', {'id': 2})
 base = "https://inou-fde25.firebaseio.com/cam1/"
 firebase = firebase.FirebaseApplication(base, None)
@@ -18,7 +20,8 @@ firebase = firebase.FirebaseApplication(base, None)
 def sendData(user):
     ts = time.time()
     st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-    result = firebase.patch(base + str(user) + '/timestamp', {'time': st})
+    node = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
+    result = firebase.patch(base + str(user) + '/timestamp/' + node, {'time': st})
     print("[INFO] Data Posted to firebase")
     print("[MSG]")
     print(result)
@@ -30,7 +33,7 @@ def sendData(user):
 moved_files_cnt = 0
 ds_cnt = 0
 known_cnt = 0 
-face_id = 1
+face_id = 0
 known_faces = [] 
 known_faces_encoding = []
 known_encodings = []
@@ -52,10 +55,12 @@ def analysis(ds_cnt):
         
     print ("[INFO] Charging up the camera :)")
         
-    try:    
-        ret, img = cam.read()
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_detector.detectMultiScale(gray, 1.3, 5) 
+#    try:    
+    ret, img = cam.read()
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    cv2.imshow("gray",gray)
+    faces = face_detector.detectMultiScale(gray, 1.3, 5) 
+    if(len(faces) > 0):
         for (x,y,w,h) in faces:
             cv2.rectangle(img, (x,y), (x+w,y+h), (255,0,0), 2)     
             print ("[INFO] Taking your picture, Smile")
@@ -69,7 +74,12 @@ def analysis(ds_cnt):
             test_faces.append(face_recognition.load_image_file("unknown-face/" + test_face))
         print("[INFO] Test face loaded from datastore")
         
+#        print(test_faces[2])
+#        exit()        
         for test_face in test_faces:
+            print(test_face)
+            print(face_recognition.face_encodings(test_face))
+            print("==================================================")
             test_faces_encoding.append(face_recognition.face_encodings(test_face)[0])  
         print("[INFO] Test face encoding")
         
@@ -85,20 +95,29 @@ def analysis(ds_cnt):
                 cam.release()
                 cv2.destroyAllWindows()
                 break
-            elif(face_distance > 0.41 and face_distance <= 0.70):
+            elif(face_distance > 0.41 and face_distance <= 0.60):
                 continue
-            elif(round(face_distance,2) > 0.71):
+            elif(round(face_distance,2) > 0.61):
                 global moved_files_cnt
                 #print("let's move to the known files")
                 print(round(face_distance,2))
                 moved_files_cnt += 1
                 cam.release()
                 cv2.destroyAllWindows()
+                y_i=0
                 for test_face in os.listdir('C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face'):
-                     os.rename("C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/" + test_face,"C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/known-face/" + str(ds_cnt + 1) + ".jpg")
+                     os.rename("C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/" 
+                               + test_face,"C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/known-face/" + str(ds_cnt + 1 + y_i) + ".jpg")
+                     y_i+=1
+                
+                test = 'C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face*'
+                r = glob.glob(test)
+                for i in r:
+                   os.remove(i)
+                
                 break
-        
-    except Exception as e: print(e)
+            
+#    except Exception as e: print(e)
         
     print("unique visitors" + str(moved_files_cnt))
     print()
@@ -125,8 +144,9 @@ while(True):
     print(len(known_encodings))
     analysis(ds_cnt)
     cv2.destroyAllWindows()
-    del known_encodings [:]
     time.sleep(15)
+	
+cam.release()
 
 
 
