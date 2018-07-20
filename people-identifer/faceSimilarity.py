@@ -6,7 +6,6 @@ Created on Mon May 28 14:45:58 2018
 """
 # python faceSimilarity.py --prototxt deploy.prototxt.txt --model res10_300x300_ssd_iter_140000.caffemodel
 
-
 import face_recognition
 import cv2
 import time
@@ -16,10 +15,13 @@ import datetime
 import string
 import random
 import numpy as np
-from imutils.video import VideoStream
 import argparse
-import imutils
 import glob
+import dlib
+from skimage import data, img_as_float
+from skimage import exposure, color
+
+from imutils.face_utils import FaceAligner
 
 
 
@@ -29,7 +31,7 @@ u_base = "https://inou-fde25.firebaseio.com/"
 firebase = firebase.FirebaseApplication(base, None)
 def send_ds_cnt(ds_cnt):
      result = firebase.patch(u_base + '/known_faces/',{'count': ds_cnt})
-     print(result)
+     #print(result)
     
 def sendData(user):
     ts = time.time()
@@ -52,7 +54,6 @@ def uniqueData():
     print(postresult)
    
 #from threading import Thread
-
 moved_files_cnt = 0
 ds_cnt = 0
 known_cnt = 0 
@@ -70,7 +71,7 @@ def analysis(vs):
 
         
     print ("[INFO] Charging up the camera :)")
-#    distance = []
+    distance = []
     try:
         _,frame = vs.read()
         #frame = imutils.resize(frame, width=400)
@@ -78,7 +79,10 @@ def analysis(vs):
         blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0,
         (300, 300), (104.0, 177.0, 123.0))
         net.setInput(blob)
+        print(str(time.time()))
         detections = net.forward()
+    
+        print(str(time.time()))
         for i in range(0, detections.shape[2]):
         # extract the confidence (i.e., probability) associated with the
         # prediction
@@ -98,27 +102,47 @@ def analysis(vs):
             # probability
             #text = "{:.2f}%".format(confidence * 100)
             #y = startY - 10 if startY - 10 > 10 else startY + 10
-            cv2.rectangle(frame, (startX, startY), (endX, endY),(0, 0, 255), 2)
+            #v2.rectangle(frame, (startX, startY), (endX, endY),(0, 0, 255), 2)
             #cv2.putText(frame, text, (startX, y),cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            cv2.imwrite("unknown-face/" + str(face_id) + ".jpg", gray[startY:endY,startX:endX])
-            face_id += 1
-#        ret, img = cam.read()
-#        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-#        faces = face_detector.detectMultiScale(gray, 1.3, 5) 
-#        if(len(faces) > 0):
-#            for (x,y,w,h) in faces:
-#                cv2.rectangle(img, (x,y), (x+w,y+h), (255,0,0), 2)     
-#                print ("[INFO] Taking your picture, Smile")
-#                    # Save the captured image into the datasets folder
-#                cv2.imwrite("unknown-face/" + str(face_id) + ".jpg", gray[y:y+h,x:x+w])
-#                #cv2.imshow("img",gray)
+            
+            blurr = cv2.Laplacian(frame, cv2.CV_64F).var()
+            #print(blurr)
+            if(blurr > 100):
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#                # Contrast stretching
+#                p2, p98 = np.percentile(gray, (2, 98))
+#                img_rescale = exposure.rescale_intensity(gray, in_range=(p2, p98))
+#                print(type(gray),gray.shape)
+#                print(np.min(gray),np.max(gray))
+#               
+#                # Equalization
+#                img_eq = exposure.equalize_hist(gray) * 255.0
+#                
+                # Adaptive Equalization
+                
+                #print(np.min(img_eq),np.max(img_eq ))
+                
+                rect = dlib.rectangle(left = startX,top = startY,right = endX ,bottom = endY)
+                #print(type(rect),rect)
+                #print(type(frame),frame.shape)
+                #print(type(gray),gray.shape)
+                faceAligned = fa.align(frame, gray,rect)   
+                #print(faceAligned.shape)
+                img_adapteq = exposure.equalize_adapthist(faceAligned, clip_limit=0.03) * 255.0
+#               cv2.imwrite("unknown-face/" + str(face_id) + "Adaptive_Equalization_.jpg", img_adapteq[startY-50:endY+100,startX-50:endX+100])
+                img_gray = color.rgb2gray(img_adapteq)
+                cv2.imwrite("unknown-face/" + str(face_id) + ".jpg", img_gray)
+#                cv2.imwrite("unknown-face/" + str(face_id) + ".jpg", img_adapteq[startY-50:endY+100,startX-50:endX+100])
+                face_id += 1
+            else:
+                pass
         try:
             faces_name_unknown=os.listdir('C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face')
             for test_face in os.listdir('C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face'):
                 test_faces.append(face_recognition.load_image_file("unknown-face/" + test_face))
             
             print("[INFO] Test face loaded from datastore")      
+            
             for test_face in test_faces:
                 test_faces_encoding.append(face_recognition.face_encodings(test_face)[0])  
             print("[INFO] Test face encoding")
@@ -140,27 +164,20 @@ def analysis(vs):
                     sendData(i+1)
                 else:
                     global moved_files_cnt
-                    #print(round(face_distances[],2))
-                    #moved_files_cnt += 1
                     uniqueData()
                     print("Need to move file",str(b))
                     os.rename("C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/"+ str(b) ,"C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/known-face/" + str(ds_cnt + 1) + ".jpg")
-    
-            #print(type(face_distances))
-                #distance.append(face_distances)
-    
             print("[INFO] Distance finding done")
-            
-        #print(type(distance))
-        
-        #i = face_distances.index(min(face_distances))
-        
         except Exception as e:
             print("Inner exception ,file loading ",str(e))
-            if(str(e) == "list index out of range" or str(e) in "cannot identify image file 'unknown-face/'"):
-                files = glob.glob('C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/*')
-                for f in files:
-                    os.remove(f)
+            if(str(e) == "list index out of range"):
+                print("Test")
+                os.remove("C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/"+str(b))
+#                files = glob.glob('C:/Users/Alabhya Vaibhav/Documents/Python Scripts/facerecog/unknown-face/*')
+#                for f in files:
+#                    os.remove(f)
+            
+                
             
                                 
     except Exception as e:
@@ -175,12 +192,15 @@ def analysis(vs):
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--prototxt", required=True,help="path to Caffe 'deploy' prototxt file")
 ap.add_argument("-m", "--model", required=True,help="path to Caffe pre-trained model")
-ap.add_argument("-c", "--confidence", type=float, default=0.8,help="minimum probability to filter weak detections")
+ap.add_argument("-c", "--confidence", type=float, default=0.5,help="minimum probability to filter weak detections")
 args = vars(ap.parse_args())
+predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+fa = FaceAligner(predictor, desiredFaceWidth=256)
 net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 vs = cv2.VideoCapture(0)
-#vs.set(3,1280)
-#vs.set(4,1024)
+vs.set(3,800)
+vs.set(4,800)
+
 while(True):
        
     #cam = cv2.VideoCapture(0)
@@ -205,7 +225,6 @@ while(True):
     except:
         print("Encoding error, Retrying")
     #print(len(known_encodings))
-    time.sleep(1)
     analysis(vs)
 
 
